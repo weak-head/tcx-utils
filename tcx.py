@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 class TCX:
     """
-    The typical TCX file could have the following structure:
+    The typical TCX file is an XML-based file with the following structure:
 
 <TrainingCenterDatabase>
     <Activities>
@@ -63,6 +63,7 @@ class TCX:
 
     Lap = "Lap"
 
+    StartTime = "StartTime"
     TotalTime = "TotalTimeSeconds"
 
     Track = "Track"
@@ -74,66 +75,124 @@ class TCX:
     Cadence = "Cadence"
     Watts = "Watts"
 
+    TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
 
-def get_elements(tree, name):
+    @staticmethod
+    def get_elements(tree, name):
+        """
+        Recursively find elements of the given tree whose tag
+        contains the given string.
+        """
+        return (elem for elem in tree.iter() if name in elem.tag)
+
+    @staticmethod
+    def get_element(tree, name):
+        """
+        Recursively find the first element of the given tree whose tag
+        contains the given string.
+        """
+        for elem in tree.iter():
+            if name in elem.tag:
+                return elem
+
+    @staticmethod
+    def parse_time(time_string):
+        """
+        """
+        return datetime.strptime(time_string, TCX.TimeFormat)
+
+class Workout:
     """
-    Recursively find elements of the given tree whose tag
-    contains the given string.
-    """
-    return (elem for elem in tree.iter() if name in elem.tag)
-
-
-def scale(
-    tree, scale_factor, scale_distance=True, scale_cadence=True, scale_watts=True
-):
-    """
-    For the cases when a treadmill or bike measuers incorrect distance, cadence or watts
-    we can adjust them keeping the same time and gps coordinates. Typically this is the case
-    with incorrectly calibrated indoor equipment or outdoor trackers.
     """
 
-    def scale_value(root, node_name, scale_factor):
-        for node in get_elements(root, node_name):
-            node.text = str(int(float(node.text) * scale_factor))
+    def __init__(self):
+        self._root = None
 
-    for lap in get_elements(tree, TCX.Lap):
-        for trackpoint in get_elements(lap, TCX.Trackpoint):
+    def load(self, file):
+        """
+        Read and parse TCX file.
+        Return root of the workout XML-tree.
+        """
+        self._root = ET.parse(file)
 
-            if scale_distance:
-                scale_value(trackpoint, TCX.Distance, scale_factor)
+    def save(self, file):
+        """
+        Save workout tree as TCX file.
+        """
+        encoding = "utf-8"
 
-            if scale_cadence:
-                scale_value(trackpoint, TCX.Cadence, scale_factor)
+        # Write to memory buffer, since ElementTree
+        # doesn't include XML declaration.
+        # Decode byte stream as a string and remove
+        # namespace (e.g. "<ns3:...>") information from the string.
+        mem_buf = BytesIO()
+        self._root.write(mem_buf, encoding=encoding, xml_declaration=True)
+        s = mem_buf.getvalue().decode(encoding)
+        s = re.sub(r"ns\d+:", "", s)
 
-            if scale_watts:
-                scale_value(trackpoint, TCX.Watts, scale_factor)
+        with open(file, "w") as f2:
+            print(s, file=f2)
 
+    def scale(
+        self, scale_factor, scale_distance=True, scale_cadence=True, scale_watts=True
+    ):
+        """
+        For the cases when a treadmill or bike measuers incorrect distance, cadence or watts
+        we can adjust them keeping the same time and gps coordinates. Typically this is the case
+        with incorrectly calibrated indoor equipment or outdoor trackers.
+        """
 
-def read(file):
+        def scale_value(root, node_name, scale_factor):
+            for node in TCX.get_elements(root, node_name):
+                node.text = str(int(float(node.text) * scale_factor))
+
+        for lap in TCX.get_elements(self._root, TCX.Lap):
+            for trackpoint in TCX.get_elements(lap, TCX.Trackpoint):
+
+                if scale_distance:
+                    scale_value(trackpoint, TCX.Distance, scale_factor)
+
+                if scale_cadence:
+                    scale_value(trackpoint, TCX.Cadence, scale_factor)
+
+                if scale_watts:
+                    scale_value(trackpoint, TCX.Watts, scale_factor)
+
+class Lap:
     """
-    Read and parse TCX file.
-    Return root of the workout XML-tree.
     """
-    return ET.parse(file)
 
+    def __init__(self, lap_root):
+        self._root = lap_root
 
-def write(tree, file):
+    @property
+    def start_time(self):
+        return TCX.parse_time(self._root.get(TCX.StartTime))
+
+    @start_time.setter
+    def start_time(self, x):
+        pass
+
+    @property
+    def finish_time(self):
+        """
+        """
+        
+        def get_trackpoint_time(trackpoint_root):
+            return TCX.parse_time(TCX.get_element(trackpoint_root, TCX.Time).text)
+
+        last_trackpoint = sorted(
+            TCX.get_elements(self._root, TCX.Trackpoint),
+            key=lambda trackpoint: get_trackpoint_time(trackpoint),
+            reverse=True,
+        )[0]
+
+        return get_trackpoint_time(last_trackpoint)
+        
+class Trackpoint:
     """
-    Save workout tree as TCX file.
     """
-    encoding = "utf-8"
-
-    # Write to memory buffer, since ElementTree
-    # doesn't include XML declaration.
-    # Decode byte stream as a string and remove
-    # namespace (e.g. "<ns3:...>") information from the string.
-    mem_buf = BytesIO()
-    tree.write(mem_buf, encoding=encoding, xml_declaration=True)
-    s = mem_buf.getvalue().decode(encoding)
-    s = re.sub(r"ns\d+:", "", s)
-
-    with open(file, "w") as f2:
-        print(s, file=f2)
+    pass
 
 
 def parse_args():
