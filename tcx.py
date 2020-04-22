@@ -10,110 +10,67 @@ from datetime import datetime, timedelta
 
 class TCX:
     """
-    The typical TCX file is an XML-based file with the following structure:
-
-<TrainingCenterDatabase>
-    <Activities>
-        <Activity Sport="Biking">
-            <Id>2020-04-14T17:12:26.000Z</Id>
-            <Lap StartTime="2020-04-14T17:12:26.000Z">
-                <TotalTimeSeconds>1840</TotalTimeSeconds>
-                <DistanceMeters>13036</DistanceMeters>
-                <Calories>190</Calories>
-                <AverageHeartRateBpm>
-                    <Value>154</Value>
-                </AverageHeartRateBpm>
-                <Intensity>Active</Intensity>
-                <Cadence>79</Cadence>
-                <TriggerMethod>Manual</TriggerMethod>
-                <Track>
-                    <Trackpoint>
-                        <Time>2020-04-14T17:12:27.820Z</Time>
-                        <DistanceMeters>0</DistanceMeters>
-                        <HeartRateBpm>
-                            <Value>99</Value>
-                        </HeartRateBpm>
-                        <Cadence>57</Cadence>
-                        <Extensions>
-                            <ns3:TPX>
-                                <ns3:Watts>40</ns3:Watts>
-                            </ns3:TPX>
-                        </Extensions>
-                    </Trackpoint>
-                    <Trackpoint>
-                        <Time>2020-04-14T17:12:28.465Z</Time>
-                        <DistanceMeters>3</DistanceMeters>
-                        <HeartRateBpm>
-                            <Value>89</Value>
-                        </HeartRateBpm>
-                        <Cadence>57</Cadence>
-                        <Extensions>
-                            <ns3:TPX>
-                                <ns3:Watts>40</ns3:Watts>
-                            </ns3:TPX>
-                        </Extensions>
-                    </Trackpoint>
-                </Track>
-            </Lap>
-            <Notes>Bike Model</Notes>
-        </Activity>
-    </Activities>
-</TrainingCenterDatabase>
     """
 
-    Lap = "Lap"
+    __TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
 
-    StartTime = "StartTime"
-    TotalTime = "TotalTimeSeconds"
+    def __init__(self, root):
+        self._root = root
 
-    Track = "Track"
-    Trackpoint = "Trackpoint"
-
-    Time = "Time"
-    HeartRate = "HeartRateBpm"
-    Distance = "DistanceMeters"
-    Cadence = "Cadence"
-    Watts = "Watts"
-
-    TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
-
-    @staticmethod
-    def get_elements(tree, name):
+    def get_elements(self, name):
         """
         Recursively find elements of the given tree whose tag
         contains the given string.
         """
-        return (elem for elem in tree.iter() if name in elem.tag)
+        return (elem for elem in self._root.iter() if name in elem.tag)
 
-    @staticmethod
-    def get_element(tree, name):
+    def get_element(self, name):
         """
         Recursively find the first element of the given tree whose tag
         contains the given string.
         """
-        for elem in tree.iter():
+        for elem in self._root.iter():
             if name in elem.tag:
                 return elem
+
+    def get_attribute(self, name):
+        """
+        """
+        return self._root.get(name)
 
     @staticmethod
     def parse_time(time_string):
         """
         """
-        return datetime.strptime(time_string, TCX.TimeFormat)
+        return datetime.strptime(time_string, TCX.__TimeFormat)
 
-class Workout:
+
+class Workout(TCX):
     """
     """
 
-    def __init__(self):
-        self._root = None
+    __Id = "Id"
+    __Activity = "Activity"
+    __Sport = "Sport"
+    __Lap = "Lap"
+    __Notes = "Notes"
 
-    def load(self, file):
+    def __init__(self, workout_root: ET.ElementTree):
+        super().__init__(workout_root)
+
+    @property
+    def laps(self):
         """
-        Read and parse TCX file.
+        """
+        return (Lap(lap) for lap in self.get_elements(Workout.__Lap))
+
+    @classmethod
+    def load(cls, file):
+        """
+        Read and parse TCX file with workout data.
         Return root of the workout XML-tree.
         """
-        self._root = ET.parse(file)
+        return cls(ET.parse(file))
 
     def save(self, file):
         """
@@ -142,32 +99,44 @@ class Workout:
         with incorrectly calibrated indoor equipment or outdoor trackers.
         """
 
-        def scale_value(root, node_name, scale_factor):
-            for node in TCX.get_elements(root, node_name):
-                node.text = str(int(float(node.text) * scale_factor))
-
-        for lap in TCX.get_elements(self._root, TCX.Lap):
-            for trackpoint in TCX.get_elements(lap, TCX.Trackpoint):
+        for lap in self.laps:
+            for trackpoint in lap.trackpoints:
 
                 if scale_distance:
-                    scale_value(trackpoint, TCX.Distance, scale_factor)
+                    trackpoint.distance = trackpoint.distance * scale_factor
 
                 if scale_cadence:
-                    scale_value(trackpoint, TCX.Cadence, scale_factor)
+                    trackpoint.cadence = trackpoint.cadence * scale_factor
 
                 if scale_watts:
-                    scale_value(trackpoint, TCX.Watts, scale_factor)
+                    trackpoint.watts = trackpoint.watts * scale_factor
 
-class Lap:
+
+class Lap(TCX):
     """
     """
 
-    def __init__(self, lap_root):
-        self._root = lap_root
+    __StartTime = "StartTime"
+    __TotalTime = "TotalTimeSeconds"
+    __Distance = "DistanceMeters"
+    __Calories = "Calories"
+    __AverageHeartRate = "AverageHeartRateBpm"
+    __Cadence = "Cadence"
+    __Track = "Track"
+    __Trackpoint = "Trackpoint"
+
+    def __init__(self, lap_root: ET.Element):
+        super().__init__(lap_root)
+
+    @property
+    def trackpoints(self):
+        """
+        """
+        return (Trackpoint(tp) for tp in self.get_elements(Lap.__Trackpoint))
 
     @property
     def start_time(self):
-        return TCX.parse_time(self._root.get(TCX.StartTime))
+        return Lap.parse_time(self.get_attribute(Lap.__StartTime))
 
     @start_time.setter
     def start_time(self, x):
@@ -177,22 +146,67 @@ class Lap:
     def finish_time(self):
         """
         """
-        
-        def get_trackpoint_time(trackpoint_root):
-            return TCX.parse_time(TCX.get_element(trackpoint_root, TCX.Time).text)
-
         last_trackpoint = sorted(
-            TCX.get_elements(self._root, TCX.Trackpoint),
-            key=lambda trackpoint: get_trackpoint_time(trackpoint),
-            reverse=True,
+            self.trackpoints, key=lambda tp: tp.time, reverse=True
         )[0]
+        return last_trackpoint.time
 
-        return get_trackpoint_time(last_trackpoint)
-        
-class Trackpoint:
+
+class Trackpoint(TCX):
     """
     """
-    pass
+
+    __Time = "Time"
+    __HeartRate = "HeartRateBpm"
+    __Distance = "DistanceMeters"
+    __Cadence = "Cadence"
+    __Watts = "Watts"
+
+    def __init__(self, trackpoint_root: ET.Element):
+        super().__init__(trackpoint_root)
+
+    @property
+    def time(self):
+        """
+        Timestamp (datetime)
+        """
+        return TCX.parse_time(self.get_element(Trackpoint.__Time).text)
+
+    @property
+    def distance(self):
+        """
+        Distance in meters (int)
+        """
+        return int(self.get_element(Trackpoint.__Distance).text)
+
+    @distance.setter
+    def distance(self, x):
+        node = self.get_element(Trackpoint.__Distance)
+        node.text = str(int(x))
+
+    @property
+    def cadence(self):
+        """
+        Cadence (int)
+        """
+        return int(self.get_element(Trackpoint.__Cadence).text)
+
+    @cadence.setter
+    def cadence(self, x):
+        node = self.get_element(Trackpoint.__Cadence)
+        node.text = str(int(x))
+
+    @property
+    def watts(self):
+        """
+        Watts (int)
+        """
+        return int(self.get_element(Trackpoint.__Watts).text)
+
+    @watts.setter
+    def watts(self, x):
+        node = self.get_element(Trackpoint.__Watts)
+        node.text = str(int(x))
 
 
 def parse_args():
@@ -231,6 +245,10 @@ def parse_args():
 def main():
     args = parse_args()
     print(args)
+
+    # w = Workout.load(args.input[0])
+    # w.scale(2)
+    # w.save("out.tcx")
 
 
 if __name__ == "__main__":
