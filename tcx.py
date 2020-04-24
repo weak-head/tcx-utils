@@ -41,8 +41,18 @@ class TCX:
     @staticmethod
     def parse_time(time_string):
         """
+        Parses string representation of 'datetime' and returns
+        an instance of the 'datetime'.
         """
         return datetime.strptime(time_string, TCX.__TimeFormat)
+
+    @staticmethod
+    def to_time_string(dt: datetime):
+        """
+        Converts an instance of the 'datetime' to 
+        correctly formated string representation.
+        """
+        return dt.strftime(TCX.__TimeFormat)
 
 
 class Workout(TCX):
@@ -61,8 +71,39 @@ class Workout(TCX):
     @property
     def laps(self):
         """
+        Workout should have at least one lap, but it could have more.
         """
         return (Lap(lap) for lap in self.get_elements(Workout.__Lap))
+
+    @property
+    def activity(self):
+        """
+        Kind of activity.
+        """
+        return self.get_element(Workout.__Activity).get(Workout.__Sport)
+
+    @property
+    def start_time(self):
+        """
+        Workout start time.
+        """
+        first_lap = sorted(self.laps, key=lambda lp: lp.start_time, reverse=False)[0]
+        return first_lap.start_time
+
+    @property
+    def finish_time(self):
+        """
+        Workout finish time.
+        """
+        last_lap = sorted(self.laps, key=lambda lp: lp.finish_time, reverse=True)[0]
+        return last_lap.finish_time
+
+    @property
+    def duration(self):
+        """
+        Workout duration.
+        """
+        return self.finish_time - self.start_time
 
     @classmethod
     def load(cls, file):
@@ -87,8 +128,24 @@ class Workout(TCX):
         s = mem_buf.getvalue().decode(encoding)
         s = re.sub(r"ns\d+:", "", s)
 
-        with open(file, "w") as f2:
-            print(s, file=f2)
+        with open(file, "w") as f:
+            print(s, file=f)
+
+    def overlaps(self, workout):
+        """
+        Returns true if this workout overlaps the other workout.
+        """
+        return max(self.start_time, workout.start_time) <= min(
+            self.finish_time, workout.finish_time
+        )
+
+    def overlaps_by(self, workout):
+        """
+        Returns the overlap time of two workouts.
+        """
+        return min(self.finish_time, workout.finish_time) - max(
+            self.start_time, workout.start_time
+        )
 
     def scale(
         self, scale_factor, scale_distance=True, scale_cadence=True, scale_watts=True
@@ -110,6 +167,12 @@ class Workout(TCX):
 
                 if scale_watts:
                     trackpoint.watts = trackpoint.watts * scale_factor
+
+    @staticmethod
+    def concat(*workouts):
+        """
+        """
+        pass
 
 
 class Lap(TCX):
@@ -136,10 +199,14 @@ class Lap(TCX):
 
     @property
     def start_time(self):
+        """
+        """
         return Lap.parse_time(self.get_attribute(Lap.__StartTime))
 
     @start_time.setter
     def start_time(self, x):
+        """
+        """
         pass
 
     @property
@@ -246,7 +313,11 @@ def main():
     args = parse_args()
     print(args)
 
-    # w = Workout.load(args.input[0])
+    w = Workout.load(args.input[0])
+    print(w.activity)
+    print(w.start_time)
+    print(w.finish_time)
+    print(w.duration)
     # w.scale(2)
     # w.save("out.tcx")
 
