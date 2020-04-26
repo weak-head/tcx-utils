@@ -38,6 +38,11 @@ class TCX:
         """
         return self._root.get(name)
 
+    def set_attribute(self, name, value):
+        """
+        """
+        self._root.set(name, value)
+
     @staticmethod
     def parse_time(time_string):
         """
@@ -214,7 +219,8 @@ class Lap(TCX):
     def start_time(self, x):
         """
         """
-        pass
+        time = Lap.to_time_string(x)
+        self.set_attribute(Lap.__StartTime, time)
 
     @property
     def finish_time(self):
@@ -267,16 +273,29 @@ class Lap(TCX):
         c = self.get_element(Lap.__Calories)
         c.text = int(x)
 
-    def merge_with(self, other_lap):
+    def overlaps(self, lap):
+        """
+        Returns true if this lap overlaps the other lap.
+        """
+        return max(self.start_time, lap.start_time) <= min(
+            self.finish_time, lap.finish_time)
+        
+    def merge_with(self, lap):
         """
         Merge the lap with the other lap.
         """
-        track = self.get_element(Lap.__Track)
-        track.extend(other_lap.get_elements(Lap.__Trackpoint))
+        if self.overlaps(lap):
+            raise ValueError("Laps should not overlap")
 
-        self.total_seconds += other_lap.total_seconds
-        self.distance += other_lap.distance
-        self.calories += other_lap.calories
+        track = self.get_element(Lap.__Track)
+        track.extend(lap.get_elements(Lap.__Trackpoint))
+
+        start_time = min(self.start_time, lap.start_time)
+
+        self.start_time = start_time
+        self.total_seconds += lap.total_seconds
+        self.distance += lap.distance
+        self.calories += lap.calories
 
 
 class Trackpoint(TCX):
