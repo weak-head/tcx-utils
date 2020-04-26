@@ -169,6 +169,13 @@ class Workout(TCX):
                     trackpoint.watts = trackpoint.watts * scale_factor
 
     @staticmethod
+    def overlap(*workouts):
+        """
+        Returns True if any two workouts overlap.
+        """
+        pass
+
+    @staticmethod
     def concat(*workouts):
         """
         """
@@ -217,6 +224,59 @@ class Lap(TCX):
             self.trackpoints, key=lambda tp: tp.time, reverse=True
         )[0]
         return last_trackpoint.time
+
+    @property
+    def total_seconds(self):
+        """
+        Total lap time in seconds.
+        """
+        return int(self.get_element(Lap.__TotalTime).text)
+
+    @total_seconds.setter
+    def total_seconds(self, x):
+        """
+        """
+        time = self.get_element(Lap.__TotalTime)
+        time.text = int(x)
+
+    @property
+    def distance(self):
+        """
+        Lap distance in meters.
+        """
+        return int(self.get_element(Lap.__Distance).text)
+
+    @distance.setter
+    def distance(self, x):
+        """
+        """
+        d = self.get_element(Lap.__Distance)
+        d.text = int(x)
+
+    @property
+    def calories(self):
+        """
+        Lap calories.
+        """
+        return int(self.get_element(Lap.__Calories).text)
+
+    @calories.setter
+    def calories(self, x):
+        """
+        """
+        c = self.get_element(Lap.__Calories)
+        c.text = int(x)
+
+    def merge_with(self, other_lap):
+        """
+        Merge the lap with the other lap.
+        """
+        track = self.get_element(Lap.__Track)
+        track.extend(other_lap.get_elements(Lap.__Trackpoint))
+
+        self.total_seconds += other_lap.total_seconds
+        self.distance += other_lap.distance
+        self.calories += other_lap.calories
 
 
 class Trackpoint(TCX):
