@@ -11,10 +11,13 @@ from datetime import datetime, timedelta
 class TCX:
     """
     Base class for all TCX related elements
-    that provides utility methods.
+    that provides utility methods to work with
+    XML based structured TCX files in form of ElementTree..
     """
 
     __TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
+    __DisplayTimeFormat = "%Y-%m-%d %H:%M:%S (UTC)"
+    __DisplayTimeOnly = "%H:%M:%S"
 
     def __init__(self, root):
         self._root = root
@@ -75,12 +78,30 @@ class TCX:
         return datetime.strptime(time_string, TCX.__TimeFormat)
 
     @staticmethod
-    def to_time_string(dt: datetime):
+    def to_tcx_time_string(dt: datetime):
         """
         Converts an instance of the 'datetime' to 
-        correctly formated string representation.
+        correctly formated TCX string representation.
         """
         return dt.strftime(TCX.__TimeFormat)
+
+    @staticmethod
+    def to_ts(dt: datetime):
+        """
+        Coverts an instance of the 'datetime' to
+        human readable string representation.
+        """
+        return dt.strftime(TCX.__DisplayTimeFormat)
+
+    @staticmethod
+    def to_timeonly(dt: datetime):
+        """
+        """
+        return dt.strftime(TCX.__DisplayTimeOnly)
+
+    @staticmethod
+    def chop_ms(delta):
+        return delta - timedelta(microseconds=delta.microseconds)
 
 
 class Workout(TCX):
@@ -102,6 +123,12 @@ class Workout(TCX):
         Workout should have at least one lap, but it could have more.
         """
         return (Lap(lap) for lap in self.get_elements(Workout.__Lap))
+
+    @property
+    def workout_id(self):
+        """
+        """
+        return self.get_element(Workout.__Id).text
 
     @property
     def activity(self):
@@ -131,7 +158,9 @@ class Workout(TCX):
         """
         Workout duration.
         """
-        return self.finish_time - self.start_time
+        d = self.finish_time - self.start_time
+        d = timedelta(seconds=d.total_seconds())
+        return d
 
     @classmethod
     def load(cls, file):
@@ -158,6 +187,26 @@ class Workout(TCX):
 
         with open(file, "w") as f:
             print(s, file=f)
+
+    def info(self, prefix="", stream=sys.__stdout__):
+        """
+        Outputs workout info to a stream.
+        """
+        print(prefix + "Workout:", file=stream)
+        prefix += "  "
+
+        print(prefix + "Id:          " + self.workout_id, file=stream)
+        print(prefix + "Activity:    " + self.activity, file=stream)
+        print(prefix + "Start time:  " + TCX.to_ts(self.start_time), file=stream)
+        print(prefix + "Finish time: " + TCX.to_ts(self.finish_time), file=stream)
+        print(prefix + "Duration:    " + str(TCX.chop_ms(self.duration)), file=stream)
+
+        print(prefix + "Laps:        ", file=stream)
+        for n, lap in enumerate(self.laps):
+            lap.info(prefix=prefix + "  ", n=n, stream=stream)
+
+        print("", file=stream)
+        print("", file=stream)
 
     def overlaps(self, workout):
         """
@@ -228,6 +277,7 @@ class Lap(TCX):
     __Distance = "DistanceMeters"
     __Calories = "Calories"
     __AverageHeartRate = "AverageHeartRateBpm"
+    __MaxHeartRate = "MaximumHeartRateBpm"
     __Cadence = "Cadence"
     __Track = "Track"
     __Trackpoint = "Trackpoint"
@@ -251,7 +301,7 @@ class Lap(TCX):
     def start_time(self, x):
         """
         """
-        time = Lap.to_time_string(x)
+        time = Lap.to_tcx_time_string(x)
         self.set_attribute(Lap.__StartTime, time)
 
     @property
@@ -262,6 +312,15 @@ class Lap(TCX):
             self.trackpoints, key=lambda tp: tp.time, reverse=True
         )[0]
         return last_trackpoint.time
+
+    @property
+    def duration(self):
+        """
+        Lap duration.
+        """
+        d = self.finish_time - self.start_time
+        d = timedelta(seconds=d.total_seconds())
+        return d
 
     @property
     def total_seconds(self):
@@ -305,6 +364,32 @@ class Lap(TCX):
         c = self.get_element(Lap.__Calories)
         c.text = str(int(x))
 
+    @property
+    def cadence(self):
+        """
+        """
+        return int(self.get_element(Lap.__Cadence).text)
+
+    @property
+    def heart_rate(self):
+        """
+        """
+        e = self.get_element(Lap.__AverageHeartRate)
+        if e:
+            return int(float(e[0].text))
+        else:
+            return None
+
+    @property
+    def max_heart_rate(self):
+        """
+        """
+        e = self.get_element(Lap.__MaxHeartRate)
+        if e:
+            return int(float(e[0].text))
+        else:
+            return None
+
     def overlaps(self, lap):
         """
         Returns true if this lap overlaps the other lap.
@@ -312,6 +397,37 @@ class Lap(TCX):
         return max(self.start_time, lap.start_time) <= min(
             self.finish_time, lap.finish_time
         )
+
+    def info(self, prefix="  ", n="", stream=sys.__stdout__):
+        """
+        Outputs lap info to a stream.
+        """
+        lap_title = "Lap" if n == "" else "Lap #{0:d}".format(n)
+        lap_title += " [{0} -> {1}]".format(
+            TCX.to_timeonly(self.start_time), TCX.to_timeonly(self.finish_time)
+        )
+
+        print(prefix + lap_title, file=stream)
+        prefix += "  "
+
+        print(prefix + "Start time:  " + TCX.to_ts(self.start_time), file=stream)
+        print(prefix + "Finish time: " + TCX.to_ts(self.finish_time), file=stream)
+        print(prefix + "Duration:    " + str(TCX.chop_ms(self.duration)), file=stream)
+        print(prefix + "Distance:    " + f"{self.distance:,}m", file=stream)
+        print(prefix + "Calories:    " + str(self.calories), file=stream)
+        print(prefix + "Avg cadence: " + str(self.cadence), file=stream)
+
+        if self.heart_rate:
+            print(prefix + "Avg HR:      " + str(self.heart_rate) + " bpm", file=stream)
+
+        if self.max_heart_rate:
+            print(
+                prefix + "Max HR:      " + str(self.max_heart_rate) + " bpm",
+                file=stream,
+            )
+
+        print(prefix + "Trackpoints: " + str(len(list(self.trackpoints))), file=stream)
+        print("", file=stream)
 
     def merge(self, lap):
         """
@@ -440,11 +556,13 @@ def main():
     # args = parse_args()
     # print(args)
 
-    w1 = Workout.load("w1.tcx")#(args.input[0])
-    w2 = Workout.load("w2.tcx")#(args.input[1])
+    w1 = Workout.load("w1.tcx")  # (args.input[0])
+    w2 = Workout.load("w2.tcx")  # (args.input[1])
 
-    w1.concat(w2)
-    w1.save("merged.tcx")
+    w1.info()
+    w2.info()
+    # w1.concat(w2)
+    # w1.save("merged.tcx")
 
     # print(w.activity)
     # print(w.start_time)
