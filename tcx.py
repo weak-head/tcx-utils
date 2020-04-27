@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 class TCX:
     """
+    Base class for all TCX related elements
+    that provides utility methods.
     """
 
     __TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -35,13 +37,27 @@ class TCX:
 
     def get_attribute(self, name):
         """
+        Gets attribute of the root element.
         """
         return self._root.get(name)
 
     def set_attribute(self, name, value):
         """
+        Sets attribute of the root element.
         """
         self._root.set(name, value)
+
+    def get_child_attribute(self, child_tag, key):
+        """
+        Returns given attribute of the first child with the given tag.
+        """
+        return self.get_element(child_tag).get(key)
+
+    def set_child_attribute(self, child_tag, key, value):
+        """
+        Sets value of the given attribute of the first child with the given tag.
+        """
+        return self.get_element(child_tag).set(key, value)
 
     @staticmethod
     def sort_children_by(parent, key):
@@ -92,7 +108,7 @@ class Workout(TCX):
         """
         Kind of activity.
         """
-        return self.get_element(Workout.__Activity).get(Workout.__Sport)
+        return self.get_child_attribute(Workout.__Activity, Workout.__Sport)
 
     @property
     def start_time(self):
