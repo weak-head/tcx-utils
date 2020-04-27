@@ -44,6 +44,13 @@ class TCX:
         self._root.set(name, value)
 
     @staticmethod
+    def sort_children_by(parent, key):
+        """
+        Order children of the element tree by key.
+        """
+        parent[:] = sorted(parent, key=key)
+
+    @staticmethod
     def parse_time(time_string):
         """
         Parses string representation of 'datetime' and returns
@@ -173,6 +180,15 @@ class Workout(TCX):
                 if scale_watts:
                     trackpoint.watts = trackpoint.watts * scale_factor
 
+    def concat(self, workout, split_laps=False):
+        """
+        Concatenate the workout with the other workout.
+        """
+        self_laps = list(self.laps)
+        workout_laps = list(workout.laps)
+
+        self_laps[0].merge(workout_laps[0])
+
     @staticmethod
     def overlap(*workouts):
         """
@@ -181,7 +197,7 @@ class Workout(TCX):
         pass
 
     @staticmethod
-    def concat(*workouts):
+    def concat_all(*workouts, split_laps=False):
         """
         """
         pass
@@ -243,7 +259,7 @@ class Lap(TCX):
         """
         """
         time = self.get_element(Lap.__TotalTime)
-        time.text = int(x)
+        time.text = str(int(x))
 
     @property
     def distance(self):
@@ -257,7 +273,7 @@ class Lap(TCX):
         """
         """
         d = self.get_element(Lap.__Distance)
-        d.text = int(x)
+        d.text = str(int(x))
 
     @property
     def calories(self):
@@ -271,28 +287,44 @@ class Lap(TCX):
         """
         """
         c = self.get_element(Lap.__Calories)
-        c.text = int(x)
+        c.text = str(int(x))
 
     def overlaps(self, lap):
         """
         Returns true if this lap overlaps the other lap.
         """
         return max(self.start_time, lap.start_time) <= min(
-            self.finish_time, lap.finish_time)
-        
-    def merge_with(self, lap):
+            self.finish_time, lap.finish_time
+        )
+
+    def merge(self, lap):
         """
         Merge the lap with the other lap.
         """
         if self.overlaps(lap):
             raise ValueError("Laps should not overlap")
 
-        track = self.get_element(Lap.__Track)
-        track.extend(lap.get_elements(Lap.__Trackpoint))
+        (earlier, later) = (
+            (self, lap) if self.start_time < lap.start_time else (lap, self)
+        )
 
-        start_time = min(self.start_time, lap.start_time)
+        # Adjust later lap distance
+        base_distance = earlier.distance
+        for trackpoint in later.trackpoints:
+            trackpoint.distance += base_distance
 
-        self.start_time = start_time
+        # Merge trackpoints
+        earlier_track = earlier.get_element(Lap.__Track)
+        earlier_track.extend(later.get_elements(Lap.__Trackpoint))
+
+        # Copy the merged and adjusted trackpoints to this lap
+        self_track = self.get_element(Lap.__Track)
+        self_track[:] = earlier_track[:]
+
+        # To avoid any possible inconsistencies we order merged trackpoints by time
+        # TCX.sort_children_by(self_track, lambda trackpoint: Trackpoint(trackpoint).time)
+
+        self.start_time = earlier.start_time
         self.total_seconds += lap.total_seconds
         self.distance += lap.distance
         self.calories += lap.calories
@@ -389,14 +421,20 @@ def parse_args():
 
 
 def main():
-    args = parse_args()
-    print(args)
+    # args = parse_args()
+    # print(args)
 
-    w = Workout.load(args.input[0])
-    print(w.activity)
-    print(w.start_time)
-    print(w.finish_time)
-    print(w.duration)
+    w1 = Workout.load("w1.tcx")#(args.input[0])
+    w2 = Workout.load("w2.tcx")#(args.input[1])
+
+    w1.concat(w2)
+    w1.save("merged.tcx")
+
+    # print(w.activity)
+    # print(w.start_time)
+    # print(w.finish_time)
+    # print(w.duration)
+
     # w.scale(2)
     # w.save("out.tcx")
 
