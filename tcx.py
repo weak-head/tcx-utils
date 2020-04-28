@@ -159,8 +159,7 @@ class Workout(TCX):
         Workout duration.
         """
         d = self.finish_time - self.start_time
-        d = timedelta(seconds=d.total_seconds())
-        return d
+        return timedelta(seconds=d.total_seconds())
 
     @classmethod
     def load(cls, file):
@@ -245,14 +244,29 @@ class Workout(TCX):
                 if scale_watts:
                     trackpoint.watts = trackpoint.watts * scale_factor
 
-    def concat(self, workout, split_laps=False):
+    def concat(self, workout, merge_laps=True):
         """
         Concatenate the workout with the other workout.
         """
-        self_laps = list(self.laps)
-        workout_laps = list(workout.laps)
+        if self.overlaps(workout):
+            raise ValueError("Workouts should not overlap")
 
-        self_laps[0].merge(workout_laps[0])
+        if merge_laps:
+            self_laps = list(self.laps)
+            workout_laps = list(workout.laps)
+
+            if len(self_laps) != 1 or len(workout_laps) != 1:
+                raise ValueError(
+                    "In order to merge laps, each workout should have exactly one lap. "
+                    "[{0}] workout has {2} laps, [{1}] workout has {3} laps.".format(
+                        self.workout_id, workout.workout_id, len(self_laps), len(workout_laps)
+                    )
+                )
+
+            self_laps[0].merge(workout_laps[0])
+
+        else:
+            pass
 
     @staticmethod
     def overlap(*workouts):
@@ -375,20 +389,14 @@ class Lap(TCX):
         """
         """
         e = self.get_element(Lap.__AverageHeartRate)
-        if e:
-            return int(float(e[0].text))
-        else:
-            return None
+        return int(float(e[0].text)) if e else None
 
     @property
     def max_heart_rate(self):
         """
         """
         e = self.get_element(Lap.__MaxHeartRate)
-        if e:
-            return int(float(e[0].text))
-        else:
-            return None
+        return int(float(e[0].text)) if e else None
 
     def overlaps(self, lap):
         """
@@ -561,6 +569,10 @@ def main():
 
     w1.info()
     w2.info()
+
+    w1.concat(w2)
+    w1.save("merged.tcx")
+
     # w1.concat(w2)
     # w1.save("merged.tcx")
 
