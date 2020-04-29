@@ -3,7 +3,7 @@
 import argparse
 import re
 import sys
-import xml.etree.ElementTree as ET
+from lxml import etree as ET
 from io import BytesIO
 from datetime import datetime, timedelta
 
@@ -22,20 +22,27 @@ class TCX:
     def __init__(self, root):
         self._root = root
 
-    def get_elements(self, name):
+    def get_elements(self, name, strict=False):
         """
         Recursively find elements of the given tree whose tag
         contains the given string.
         """
-        return (elem for elem in self._root.iter() if name in elem.tag)
+        def predicate(a, b):
+            return (b.endswith(a)) if strict else (a in b)
 
-    def get_element(self, name):
+        return (elem for elem in self._root.iter() if predicate(name, elem.tag))
+
+    def get_element(self, name, strict=False):
         """
         Recursively find the first element of the given tree whose tag
         contains the given string.
         """
+
+        def predicate(a, b):
+            return (b.endswith(a)) if strict else (a in b)
+
         for elem in self._root.iter():
-            if name in elem.tag:
+            if predicate(name, elem.tag):
                 return elem
 
     def get_attribute(self, name):
@@ -109,6 +116,7 @@ class Workout(TCX):
     """
 
     __Id = "Id"
+    __Activities = "Activities"
     __Activity = "Activity"
     __Sport = "Sport"
     __Lap = "Lap"
@@ -266,7 +274,11 @@ class Workout(TCX):
             self_laps[0].merge(workout_laps[0])
 
         else:
-            pass
+            # Append all laps from the other workout to this workout
+            activity = self.get_element(Workout.__Activity, strict=True)
+
+            other_laps = workout.get_elements(Workout.__Lap, strict=True)
+            activity.extend(other_laps)
 
     @staticmethod
     def overlap(*workouts):
@@ -389,14 +401,14 @@ class Lap(TCX):
         """
         """
         e = self.get_element(Lap.__AverageHeartRate)
-        return int(float(e[0].text)) if e else None
+        return int(float(e[0].text)) if e is not None else None
 
     @property
     def max_heart_rate(self):
         """
         """
         e = self.get_element(Lap.__MaxHeartRate)
-        return int(float(e[0].text)) if e else None
+        return int(float(e[0].text)) if e is not None else None
 
     def overlaps(self, lap):
         """
@@ -570,8 +582,11 @@ def main():
     w1.info()
     w2.info()
 
-    w1.concat(w2)
+    w1.concat(w2, merge_laps=False)
     w1.save("merged.tcx")
+
+    w3 = Workout.load("merged.tcx")
+    w3.info()
 
     # w1.concat(w2)
     # w1.save("merged.tcx")
