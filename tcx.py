@@ -178,6 +178,7 @@ class Workout(TCX):
                         Track_3
 
         """
+
         APPEND_LAPS = 1
         MERGE_INTO_SINGLE_LAP = 2
         MERGE_INTO_SINGLE_TRACK = 3
@@ -189,7 +190,7 @@ class Workout(TCX):
     __Lap = "Lap"
     __Notes = "Notes"
 
-    def __init__(self, workout_root: ET.ElementTree):
+    def __init__(self, workout_root: ET._ElementTree):
         super().__init__(workout_root)
 
     @property
@@ -269,13 +270,13 @@ class Workout(TCX):
         print(prefix + "Workout:", file=stream)
         prefix += "  "
 
-        print(prefix + "Id:          " + self.workout_id, file=stream)
-        print(prefix + "Activity:    " + self.activity, file=stream)
-        print(prefix + "Start time:  " + TCX.to_ts(self.start_time), file=stream)
-        print(prefix + "Finish time: " + TCX.to_ts(self.finish_time), file=stream)
-        print(prefix + "Duration:    " + str(TCX.chop_ms(self.duration)), file=stream)
+        print(prefix + "Id:           " + self.workout_id, file=stream)
+        print(prefix + "Activity:     " + self.activity, file=stream)
+        print(prefix + "Start time:   " + TCX.to_ts(self.start_time), file=stream)
+        print(prefix + "Finish time:  " + TCX.to_ts(self.finish_time), file=stream)
+        print(prefix + "Duration:     " + str(TCX.chop_ms(self.duration)), file=stream)
 
-        print(prefix + "Laps:        ", file=stream)
+        print(prefix + "Laps:         ", file=stream)
         for n, lap in enumerate(self.laps):
             lap.info(prefix=prefix + "  ", n=n, stream=stream)
 
@@ -371,6 +372,7 @@ class Lap(TCX):
     class MergeKind(IntEnum):
         """
         """
+
         MERGE_INTO_SINGLE_LAP = 2
         MERGE_INTO_SINGLE_TRACK = 3
 
@@ -384,8 +386,14 @@ class Lap(TCX):
     __Track = "Track"
     __Trackpoint = "Trackpoint"
 
-    def __init__(self, lap_root: ET.Element):
+    def __init__(self, lap_root: ET._Element):
         super().__init__(lap_root)
+
+    @property
+    def tracks(self):
+        """
+        """
+        return (Track(t) for t in self.elements(Lap.__Track))
 
     @property
     def trackpoints(self):
@@ -506,23 +514,26 @@ class Lap(TCX):
         print(prefix + lap_title, file=stream)
         prefix += "  "
 
-        print(prefix + "Start time:  " + TCX.to_ts(self.start_time), file=stream)
-        print(prefix + "Finish time: " + TCX.to_ts(self.finish_time), file=stream)
-        print(prefix + "Duration:    " + str(TCX.chop_ms(self.duration)), file=stream)
-        print(prefix + "Distance:    " + f"{self.distance:,}m", file=stream)
-        print(prefix + "Calories:    " + str(self.calories), file=stream)
-        print(prefix + "Avg cadence: " + str(self.cadence), file=stream)
+        print(prefix + "Start time:   " + TCX.to_ts(self.start_time), file=stream)
+        print(prefix + "Finish time:  " + TCX.to_ts(self.finish_time), file=stream)
+        print(prefix + "Duration:     " + str(TCX.chop_ms(self.duration)), file=stream)
+        print(prefix + "Distance:     " + f"{self.distance:,}m", file=stream)
+        print(prefix + "Calories:     " + str(self.calories), file=stream)
+        print(prefix + "Avg cadence:  " + str(self.cadence), file=stream)
 
         if self.heart_rate:
-            print(prefix + "Avg HR:      " + str(self.heart_rate) + " bpm", file=stream)
+            print(prefix + "Avg HR:       " + str(self.heart_rate) + " bpm", file=stream)
 
         if self.max_heart_rate:
             print(
-                prefix + "Max HR:      " + str(self.max_heart_rate) + " bpm",
+                prefix + "Max HR:       " + str(self.max_heart_rate) + " bpm",
                 file=stream,
             )
 
-        print(prefix + "Trackpoints: " + str(len(list(self.trackpoints))), file=stream)
+        print(prefix + "Tracks:", file=stream)
+        for tn, track in enumerate(self.tracks):
+            track.info(prefix=prefix + "  ", n=tn, stream=stream)
+
         print("", file=stream)
 
     def merge(self, lap, merge_kind=MergeKind.MERGE_INTO_SINGLE_LAP):
@@ -558,13 +569,72 @@ class Lap(TCX):
             self_track[:] = earlier_track[:]
 
             # To avoid any possible inconsistencies we order merged trackpoints by time
-            TCX.sort_children_by(self_track, lambda trackpoint: Trackpoint(trackpoint).time)
+            TCX.sort_children_by(
+                self_track, lambda trackpoint: Trackpoint(trackpoint).time
+            )
 
         self.start_time = earlier.start_time
         self.total_seconds += lap.total_seconds
         self.distance += lap.distance
         self.calories += lap.calories
         # TODO: adjust max HR
+
+
+class Track(TCX):
+    """
+    """
+
+    __Trackpoint = "Trackpoint"
+
+    def __init__(self, track_root: ET._Element):
+        super().__init__(track_root)
+
+    @property
+    def start_time(self):
+        """
+        """
+        first_trackpoint = sorted(
+            self.trackpoints, key=lambda tp: tp.time, reverse=False
+        )[0]
+        return first_trackpoint.time
+
+    @property
+    def finish_time(self):
+        """
+        """
+        last_trackpoint = sorted(
+            self.trackpoints, key=lambda tp: tp.time, reverse=True
+        )[0]
+        return last_trackpoint.time
+
+    @property
+    def duration(self):
+        """
+        Track duration.
+        """
+        d = self.finish_time - self.start_time
+        d = timedelta(seconds=d.total_seconds())
+        return d
+
+    @property
+    def trackpoints(self):
+        """
+        """
+        return (Trackpoint(tp) for tp in self.elements(Track.__Trackpoint))
+
+    def info(self, prefix="  ", n=0, stream=sys.__stdout__):
+        """
+        """
+        track_title = "Track #{0:d} [{1} -> {2}]".format(
+            n, TCX.to_timeonly(self.start_time), TCX.to_timeonly(self.finish_time)
+        )
+        print(prefix + track_title, file=stream)
+
+        prefix += "  "
+        print(prefix + "Start time:   " + TCX.to_ts(self.start_time), file=stream)
+        print(prefix + "Finish time:  " + TCX.to_ts(self.finish_time), file=stream)
+        print(prefix + "Duration:     " + str(TCX.chop_ms(self.duration)), file=stream)
+        print(prefix + "Trackpoints:  " + str(len(list(self.trackpoints))), file=stream)
 
 
 class Trackpoint(TCX):
@@ -577,7 +647,7 @@ class Trackpoint(TCX):
     __Cadence = "Cadence"
     __Watts = "Watts"
 
-    def __init__(self, trackpoint_root: ET.Element):
+    def __init__(self, trackpoint_root: ET._Element):
         super().__init__(trackpoint_root)
 
     @property
@@ -679,7 +749,7 @@ def main():
     w1.info()
     w2.info()
 
-    w1.merge(w2, merge_kind=Workout.MergeKind.APPEND_LAPS)
+    w1.merge(w2, merge_kind=Workout.MergeKind.MERGE_INTO_SINGLE_LAP)
     w1.save(root + "merged.tcx")
 
     w3 = Workout.load(root + "merged.tcx")
