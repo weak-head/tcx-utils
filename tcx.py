@@ -136,13 +136,51 @@ class Workout(TCX):
     class MergeKind(IntEnum):
         """
         Possible kinds of workout merge:
-            - Append all laps into one workout (default)
-            - Merge all laps from all workouts into one lap
-            - Append all tracks into one lap
+
+            - APPEND_LAPS:
+                Append all laps from all workouts
+                into one workout. This is the default option.
+
+                    Workout_1  +  Workout_2  =>  Workout_M
+                      Lap_1         Lap_A          Lap_1
+                        Track_1       Track_A        Track_1
+                        Track_2     Lap_B            Track_2
+                      Lap_2           Track_B      Lap_2
+                        Track_3       Track_C        Track_3
+                                                   Lap_A
+                                                     Track_A
+                                                   Lap_B
+                                                     Track_B
+                                                     Track_C
+
+            - MERGE_INTO_SINGLE_LAP:
+                Merge all laps from all workouts into one single lap.
+                This will preserve all the track information.
+
+                    Workout_1  +  Workout_2  =>  Workout_M
+                      Lap_1         Lap_A          Lap_1
+                        Track_1       Track_A        Track_1
+                        Track_2       Track_B        Track_2
+                      Lap_2                          Track_3
+                        Track_3                      Track_A
+                                                     Track_B
+
+            - MERGE_INTO_SINGLE_TRACK:
+                Merge all tracks from all laps into a single lap
+                with a single track. This will remove all the information
+                about track splits.
+
+                    Workout_1  +  Workout_2  =>  Workout_M
+                      Lap_1         Lap_A          Lap_M
+                        Track_1       Track_A        Track_M
+                        Track_2       Track_B
+                      Lap_2
+                        Track_3
+
         """
         APPEND_LAPS = 1
-        MERGE_LAPS = 2
-        APPEND_TRACKS = 3
+        MERGE_INTO_SINGLE_LAP = 2
+        MERGE_INTO_SINGLE_TRACK = 3
 
     __Id = "Id"
     __Activities = "Activities"
@@ -333,8 +371,8 @@ class Lap(TCX):
     class MergeKind(IntEnum):
         """
         """
-        MERGE_LAPS = 2
-        APPEND_TRACKS = 3
+        MERGE_INTO_SINGLE_LAP = 2
+        MERGE_INTO_SINGLE_TRACK = 3
 
     __StartTime = "StartTime"
     __TotalTime = "TotalTimeSeconds"
@@ -487,7 +525,7 @@ class Lap(TCX):
         print(prefix + "Trackpoints: " + str(len(list(self.trackpoints))), file=stream)
         print("", file=stream)
 
-    def merge(self, lap, merge_kind=MergeKind.APPEND_TRACKS):
+    def merge(self, lap, merge_kind=MergeKind.MERGE_INTO_SINGLE_LAP):
         """
         Merge the lap with the other lap.
         """
@@ -498,8 +536,8 @@ class Lap(TCX):
             (self, lap) if self.start_time < lap.start_time else (lap, self)
         )
 
-        # Append multiple tracks into single lap
-        if merge_kind == Lap.MergeKind.APPEND_TRACKS:
+        # Marge two laps into single lap
+        if merge_kind == Lap.MergeKind.MERGE_INTO_SINGLE_LAP:
             tracks = lap.elements(Lap.__Track)
             self._root.extend(tracks)
 
@@ -598,12 +636,12 @@ def parse_args():
         "-i", "--info", action="store_true", help="Output detailed workout information"
     )
     action_ex.add_argument(
-        "-c",
-        "--concat",
+        "-m",
+        "--merge",
         type=str,
-        choices=["merge_laps", "append_tracks", "append_laps"],
+        choices=["append_laps", "merge_into_single_lap", "merge_into_single_track"],
         action="store",
-        help="Concatenate multiple workouts into one",
+        help="Merge multiple workouts into one",
     )
     action_ex.add_argument(
         "-s",
