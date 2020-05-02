@@ -16,7 +16,10 @@ class TCX:
     XML based structured TCX files in form of ElementTree..
     """
 
-    __TimeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
+    __TimeFormats = [
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%dT%H:%M:%SZ",
+    ]
     __DisplayTimeFormat = "%Y-%m-%d %H:%M:%S (UTC)"
     __DisplayTimeOnly = "%H:%M:%S"
 
@@ -100,7 +103,12 @@ class TCX:
         Parses string representation of 'datetime' and returns
         an instance of the 'datetime'.
         """
-        return datetime.strptime(time_string, TCX.__TimeFormat)
+        for tf in TCX.__TimeFormats:
+            try:
+                return datetime.strptime(time_string, tf)
+            except:
+                pass
+        raise ValueError(f"Unable to parse time string: [{time_string}]")
 
     @staticmethod
     def to_tcx_time_string(dt: datetime):
@@ -108,7 +116,7 @@ class TCX:
         Converts an instance of the 'datetime' to 
         correctly formated TCX string representation.
         """
-        return dt.strftime(TCX.__TimeFormat)
+        return dt.strftime(TCX.__TimeFormats[0])
 
     @staticmethod
     def to_ts(dt: datetime):
@@ -451,14 +459,14 @@ class Lap(TCX):
         """
         Lap distance in meters.
         """
-        return int(self.element(Lap.__Distance).text)
+        return float(self.element(Lap.__Distance).text)
 
     @distance.setter
     def distance(self, x):
         """
         """
         d = self.element(Lap.__Distance)
-        d.text = str(int(x))
+        d.text = str(float(x))
 
     @property
     def calories(self):
@@ -522,7 +530,9 @@ class Lap(TCX):
         print(prefix + "Avg cadence:  " + str(self.cadence), file=stream)
 
         if self.heart_rate:
-            print(prefix + "Avg HR:       " + str(self.heart_rate) + " bpm", file=stream)
+            print(
+                prefix + "Avg HR:       " + str(self.heart_rate) + " bpm", file=stream
+            )
 
         if self.max_heart_rate:
             print(
@@ -547,18 +557,22 @@ class Lap(TCX):
             (self, lap) if self.start_time < lap.start_time else (lap, self)
         )
 
+        # Adjust distance of the trackpoints
+        # from the later lap
+        base_distance = earlier.distance
+        for trackpoint in later.trackpoints:
+            trackpoint.distance += base_distance
+
         # Marge two laps into single lap
         if merge_kind == Lap.MergeKind.MERGE_INTO_SINGLE_LAP:
-            tracks = lap.elements(Lap.__Track)
-            self._root.extend(tracks)
+            tracks = later.elements(Lap.__Track)
+            earlier._root.extend(tracks)
+
+            # Copy the merged and adjusted tracks
+            self._root[:] = earlier._root[:]
 
         # Merge multiple tracks into single track
         else:
-            # Adjust later lap distance
-            base_distance = earlier.distance
-            for trackpoint in later.trackpoints:
-                trackpoint.distance += base_distance
-
             # Merge trackpoints
             earlier_track = earlier.element(Lap.__Track)
             later_trackpoints = list(later.elements(Lap.__Trackpoint))
@@ -636,6 +650,8 @@ class Track(TCX):
         print(prefix + "Duration:     " + str(TCX.chop_ms(self.duration)), file=stream)
         print(prefix + "Trackpoints:  " + str(len(list(self.trackpoints))), file=stream)
 
+        # for t in self.trackpoints:
+            # t.info(prefix + "  ", stream=stream)
 
 class Trackpoint(TCX):
     """
@@ -660,38 +676,53 @@ class Trackpoint(TCX):
     @property
     def distance(self):
         """
-        Distance in meters (int)
+        Distance in meters (float)
         """
-        return int(self.element(Trackpoint.__Distance).text)
+        return float(self.element(Trackpoint.__Distance).text)
 
     @distance.setter
     def distance(self, x):
         node = self.element(Trackpoint.__Distance)
-        node.text = str(int(x))
+        node.text = str(float(x))
 
     @property
     def cadence(self):
         """
-        Cadence (int)
+        Cadence (float)
         """
-        return int(self.element(Trackpoint.__Cadence).text)
+        node = self.element(Trackpoint.__Cadence)
+        return float(node.text) if node is not None else None
 
     @cadence.setter
     def cadence(self, x):
         node = self.element(Trackpoint.__Cadence)
-        node.text = str(int(x))
+        node.text = str(float(x))
 
     @property
     def watts(self):
         """
-        Watts (int)
+        Watts (float)
         """
-        return int(self.element(Trackpoint.__Watts).text)
+        node = self.element(Trackpoint.__Watts)
+        return float(node.text) if node is not None else None
 
     @watts.setter
     def watts(self, x):
         node = self.element(Trackpoint.__Watts)
-        node.text = str(int(x))
+        node.text = str(float(x))
+
+    def info(self, prefix="  ", stream=sys.__stdout__):
+        """
+        """
+        trackpoint_info = f"{TCX.to_timeonly(self.time)} -> {int(self.distance):,}m;"
+
+        if self.watts is not None:
+            trackpoint_info += f" {int(self.watts)}W;"
+
+        if self.cadence is not None:
+            trackpoint_info += f" Cadence: {int(self.cadence)};"
+
+        print(prefix + trackpoint_info, file=stream)
 
 
 def parse_args():
@@ -741,19 +772,22 @@ def main():
     # args = parse_args()
     # print(args)
 
-    root = "workouts/"
+    # root = "workouts/"
 
-    w1 = Workout.load(root + "w1.tcx")  # (args.input[0])
-    w2 = Workout.load(root + "w2.tcx")  # (args.input[1])
+    # w1 = Workout.load(root + "w1.tcx")  # (args.input[0])
+    # w2 = Workout.load(root + "w2.tcx")  # (args.input[1])
 
-    w1.info()
-    w2.info()
+    # w1.info()
+    # w2.info()
 
-    w1.merge(w2, merge_kind=Workout.MergeKind.MERGE_INTO_SINGLE_LAP)
-    w1.save(root + "merged.tcx")
+    # w1.merge(w2, merge_kind=Workout.MergeKind.MERGE_INTO_SINGLE_LAP)
+    # w1.save(root + "merged.tcx")
 
-    w3 = Workout.load(root + "merged.tcx")
-    w3.info()
+    # w3 = Workout.load(root + "merged.tcx")
+    # w3.info()
+
+    w = Workout.load("wt.tcx")
+    w.info()
 
     # w1.concat(w2)
     # w1.save("merged.tcx")
