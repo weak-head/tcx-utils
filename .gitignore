@@ -1,2 +1,6 @@
 *.tcx
+*.txt
+
 workouts/
+
+bookmarks.json

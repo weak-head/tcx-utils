@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import textwrap
 import re
 import sys
 from enum import IntEnum, auto
@@ -271,7 +272,7 @@ class Workout(TCX):
         with open(file, "w") as f:
             print(s, file=f)
 
-    def info(self, prefix="", stream=sys.__stdout__):
+    def info(self, prefix="", verbose=False, stream=sys.__stdout__):
         """
         Outputs workout info to a stream.
         """
@@ -286,7 +287,7 @@ class Workout(TCX):
 
         print(prefix + "Laps:         ", file=stream)
         for n, lap in enumerate(self.laps):
-            lap.info(prefix=prefix + "  ", n=n, stream=stream)
+            lap.info(prefix=prefix + "  ", n=n, verbose=verbose, stream=stream)
 
         print("", file=stream)
         print("", file=stream)
@@ -510,7 +511,7 @@ class Lap(TCX):
             self.finish_time, lap.finish_time
         )
 
-    def info(self, prefix="  ", n="", stream=sys.__stdout__):
+    def info(self, prefix="  ", n="", verbose=False, stream=sys.__stdout__):
         """
         Outputs lap info to a stream.
         """
@@ -542,7 +543,7 @@ class Lap(TCX):
 
         print(prefix + "Tracks:", file=stream)
         for tn, track in enumerate(self.tracks):
-            track.info(prefix=prefix + "  ", n=tn, stream=stream)
+            track.info(prefix=prefix + "  ", n=tn, verbose=verbose, stream=stream)
 
         print("", file=stream)
 
@@ -636,7 +637,7 @@ class Track(TCX):
         """
         return (Trackpoint(tp) for tp in self.elements(Track.__Trackpoint))
 
-    def info(self, prefix="  ", n=0, stream=sys.__stdout__):
+    def info(self, prefix="  ", n=0, verbose=False, stream=sys.__stdout__):
         """
         """
         track_title = "Track #{0:d} [{1} -> {2}]".format(
@@ -650,8 +651,10 @@ class Track(TCX):
         print(prefix + "Duration:     " + str(TCX.chop_ms(self.duration)), file=stream)
         print(prefix + "Trackpoints:  " + str(len(list(self.trackpoints))), file=stream)
 
-        # for t in self.trackpoints:
-            # t.info(prefix + "  ", stream=stream)
+        if verbose:
+            for t in self.trackpoints:
+                t.info(prefix + "  ", verbose=verbose, stream=stream)
+
 
 class Trackpoint(TCX):
     """
@@ -711,7 +714,7 @@ class Trackpoint(TCX):
         node = self.element(Trackpoint.__Watts)
         node.text = str(float(x))
 
-    def info(self, prefix="  ", stream=sys.__stdout__):
+    def info(self, prefix="  ", verbose=False, stream=sys.__stdout__):
         """
         """
         trackpoint_info = f"{TCX.to_timeonly(self.time)} -> {int(self.distance):,}m;"
@@ -729,38 +732,57 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Scale, concatenate and modify TCX files",
         epilog=f"Example: {sys.argv[0]} --merge activity1.tcx activity2.tcx",
+        formatter_class=argparse.RawTextHelpFormatter,
     )
+
+    # ----------------------
+    # -- Exclusive actions
 
     action = parser.add_argument_group("actions")
     action_ex = action.add_mutually_exclusive_group()
     action_ex.add_argument(
-        "-i", "--info", action="store_true", help="Output detailed workout information"
+        "-i",
+        dest="info",
+        action="count",
+        help=textwrap.dedent(
+            """\
+            Output workout information.
+                -i  : Workout, lap and track info
+                -ii : Workout, lap, track and trackpoint info
+            """
+        ),
     )
     action_ex.add_argument(
         "-m",
-        "--merge",
+        dest="merge",
         type=str,
-        choices=["append_laps", "merge_into_single_lap", "merge_into_single_track"],
+        choices=["append_laps", "merge_lap", "merge_track"],
         action="store",
-        help="Merge multiple workouts into one",
+        help=textwrap.dedent(
+            """\
+            Merge multiple workouts into one workout.
+            Options:
+                append_laps  - Append all laps from all workouts into one workout 
+                merge_laps   - Merge all laps from all workouts into one lap
+                merge_tracks - Merge all tracks from all workouts into one lap with one track
+            Example:
+                ./tcx.py -m merge_lap -o out.tcx f1.tcx f2.tcx f3.tcx 
+            """
+        ),
     )
     action_ex.add_argument(
         "-s",
-        "--scale",
+        dest="scale_factor",
         nargs="?",
         type=float,
         help="Scale duration, power, cadence and distance by the specified factor",
     )
 
-    parser.add_argument(
-        "-v",
-        "--verbosity",
-        action="store_true",
-        help="Output detailed log of operation",
-    )
+    # --------------------
+    # -- Other arguments
 
     parser.add_argument(
-        "-o", "--output", nargs="?", default="out.tcx", help="Output TCX file",
+        "-o", dest="output_file", nargs="?", default="out.tcx", help="Output TCX file",
     )
 
     parser.add_argument("input", type=str, nargs="+", help="Input TCX files")
@@ -768,37 +790,50 @@ def parse_args():
     return parser.parse_args()
 
 
+def handle_action(args):
+    """
+    """
+
+    # Output info
+    if args.info is not None:
+
+        if args.output_file is None:
+            handle_info(args.input, verbose=args.info > 1)
+        else:
+            print(f"Saving output to {args.output_file}... ", end="", flush=True)
+            with open(args.output_file, "w") as f:
+                handle_info(args.input, verbose=args.info > 1, stream=f)
+            print("Done")
+
+    # Merge workouts
+    elif args.merge is not None:
+        pass
+
+    # Scale workouts
+    elif args.scale_factor is not None:
+        pass
+
+
+def handle_info(input, verbose=False, stream=sys.__stdout__):
+    for f in input:
+        try:
+            print(f"==== {f} =======================================", file=stream)
+            w = Workout.load(f)
+            w.info(verbose=verbose, stream=stream)
+        except Exception as e:
+            print(f"Failed to process {f} file. \n{e}\n\n", file=stream)
+
+
+def handle_scale(args):
+    pass
+
+
+def handle_merge(args):
+    pass
+
+
 def main():
-    # args = parse_args()
-    # print(args)
-
-    # root = "workouts/"
-
-    # w1 = Workout.load(root + "w1.tcx")  # (args.input[0])
-    # w2 = Workout.load(root + "w2.tcx")  # (args.input[1])
-
-    # w1.info()
-    # w2.info()
-
-    # w1.merge(w2, merge_kind=Workout.MergeKind.MERGE_INTO_SINGLE_LAP)
-    # w1.save(root + "merged.tcx")
-
-    # w3 = Workout.load(root + "merged.tcx")
-    # w3.info()
-
-    w = Workout.load("wt.tcx")
-    w.info()
-
-    # w1.concat(w2)
-    # w1.save("merged.tcx")
-
-    # print(w.activity)
-    # print(w.start_time)
-    # print(w.finish_time)
-    # print(w.duration)
-
-    # w.scale(2)
-    # w.save("out.tcx")
+    handle_action(parse_args())
 
 
 if __name__ == "__main__":
