@@ -343,6 +343,14 @@ class Workout(TCX):
             other_laps = workout.elements(Workout.__Lap)
             activity.extend(other_laps)
 
+            # To avoid any possible inconsistencies we order laps by time
+            def predicate(child):
+                try:
+                    return Lap(child).start_time
+                except:
+                    return datetime.now()
+            TCX.sort_children_by(activity, predicate)
+
         else:
             self_laps = list(self.laps)
             workout_laps = list(workout.laps)
@@ -368,10 +376,13 @@ class Workout(TCX):
         pass
 
     @staticmethod
-    def concat_all(*workouts, split_laps=False):
+    def merge_all(workouts, merge_kind=MergeKind.APPEND_LAPS):
         """
         """
-        pass
+        first, others = Workout.load(workouts[0]), workouts[1:]
+        for other in others:
+            first.merge(Workout.load(other), merge_kind=merge_kind)
+        return first
 
 
 class Lap(TCX):
@@ -782,7 +793,7 @@ def parse_args():
     # -- Other arguments
 
     parser.add_argument(
-        "-o", dest="output_file", nargs="?", default="out.tcx", help="Output TCX file",
+        "-o", dest="output_file", nargs="?", help="Output TCX file",
     )
 
     parser.add_argument("input", type=str, nargs="+", help="Input TCX files")
@@ -807,7 +818,10 @@ def handle_action(args):
 
     # Merge workouts
     elif args.merge is not None:
-        pass
+        output = args.output_file if args.output_file is not None else "out.tcx"
+        print(f"Merging [{', '.join(args.input)}] into [{output}]... ", end="", flush=True)
+        handle_merge(args.input, output)
+        print("Done")
 
     # Scale workouts
     elif args.scale_factor is not None:
@@ -828,8 +842,9 @@ def handle_scale(args):
     pass
 
 
-def handle_merge(args):
-    pass
+def handle_merge(input, output):
+    w = Workout.merge_all(input)
+    w.save(output)
 
 
 def main():
