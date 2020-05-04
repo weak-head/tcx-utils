@@ -320,13 +320,13 @@ class Workout(TCX):
         for lap in self.laps:
             for trackpoint in lap.trackpoints:
 
-                if scale_distance:
+                if scale_distance and trackpoint.distance is not None:
                     trackpoint.distance = trackpoint.distance * scale_factor
 
-                if scale_cadence:
+                if scale_cadence and trackpoint.cadence is not None:
                     trackpoint.cadence = trackpoint.cadence * scale_factor
 
-                if scale_watts:
+                if scale_watts and trackpoint.watts is not None:
                     trackpoint.watts = trackpoint.watts * scale_factor
 
     def merge(self, workout, merge_kind=MergeKind.APPEND_LAPS):
@@ -349,6 +349,7 @@ class Workout(TCX):
                     return Lap(child).start_time
                 except:
                     return datetime.now()
+
             TCX.sort_children_by(activity, predicate)
 
         else:
@@ -485,20 +486,21 @@ class Lap(TCX):
         """
         Lap calories.
         """
-        return int(self.element(Lap.__Calories).text)
+        return float(self.element(Lap.__Calories).text)
 
     @calories.setter
     def calories(self, x):
         """
         """
         c = self.element(Lap.__Calories)
-        c.text = str(int(x))
+        c.text = str(float(x))
 
     @property
     def cadence(self):
         """
         """
-        return int(self.element(Lap.__Cadence).text)
+        e = self.element(Lap.__Cadence)
+        return int(float(e.text)) if e is not None else None
 
     @property
     def heart_rate(self):
@@ -692,7 +694,8 @@ class Trackpoint(TCX):
         """
         Distance in meters (float)
         """
-        return float(self.element(Trackpoint.__Distance).text)
+        node = self.element(Trackpoint.__Distance)
+        return float(node.text) if node is not None else None
 
     @distance.setter
     def distance(self, x):
@@ -819,7 +822,9 @@ def handle_action(args):
     # Merge workouts
     elif args.merge is not None:
         output = args.output_file if args.output_file is not None else "out.tcx"
-        print(f"Merging [{', '.join(args.input)}] into [{output}]... ", end="", flush=True)
+        print(
+            f"Merging [{', '.join(args.input)}] into [{output}]... ", end="", flush=True
+        )
         handle_merge(args.input, output)
         print("Done")
 
@@ -827,14 +832,18 @@ def handle_action(args):
     elif args.scale_factor is not None:
         if len(args.input) > 1:
             print(
-                f"Scaling of multiple workouts is not supported: [{', '.join(args.input)}]." + 
-                " Please scale one workout at a time.\n", 
+                f"Scaling of multiple workouts is not supported: [{', '.join(args.input)}]."
+                + " Please scale one workout at a time.\n",
             )
             return
 
         output = args.output_file if args.output_file is not None else "out.tcx"
-        print(f"Scaling [{args.input[0]}] workout. Output: [{output}]... ", end="", flush=True)
-        handle_scale(args.input, output)
+        print(
+            f"Scaling [{args.input[0]}] workout. Output: [{output}]... ",
+            end="",
+            flush=True,
+        )
+        handle_scale(args.input[0], float(args.scale_factor), output)
         print("Done")
 
 
@@ -848,8 +857,10 @@ def handle_info(input, verbose=False, stream=sys.__stdout__):
             print(f"Failed to process {f} file. \n{e}\n\n", file=stream)
 
 
-def handle_scale(input, output):
-    pass
+def handle_scale(input, factor, output):
+    w = Workout.load(input)
+    w.scale(factor)
+    w.save(output)
 
 
 def handle_merge(input, output):
