@@ -825,7 +825,17 @@ def handle_action(args):
 
     # Scale workouts
     elif args.scale_factor is not None:
-        pass
+        if len(args.input) > 1:
+            print(
+                f"Scaling of multiple workouts is not supported: [{', '.join(args.input)}]." + 
+                " Please scale one workout at a time.\n", 
+            )
+            return
+
+        output = args.output_file if args.output_file is not None else "out.tcx"
+        print(f"Scaling [{args.input[0]}] workout. Output: [{output}]... ", end="", flush=True)
+        handle_scale(args.input, output)
+        print("Done")
 
 
 def handle_info(input, verbose=False, stream=sys.__stdout__):
@@ -838,7 +848,7 @@ def handle_info(input, verbose=False, stream=sys.__stdout__):
             print(f"Failed to process {f} file. \n{e}\n\n", file=stream)
 
 
-def handle_scale(args):
+def handle_scale(input, output):
     pass
 
 
