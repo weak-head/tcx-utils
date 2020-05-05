@@ -1,6 +1,7 @@
-*.tcx
-*.txt
+.vscode/
 
 workouts/
+venv/
 
 bookmarks.json
+*.lock
