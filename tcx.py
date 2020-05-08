@@ -745,7 +745,7 @@ class Trackpoint(TCX):
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Scale, concatenate and modify TCX files",
-        epilog=f"Example: {sys.argv[0]} --merge activity1.tcx activity2.tcx",
+        epilog=f"Example: {sys.argv[0]} -m append_laps activity1.tcx activity2.tcx",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
