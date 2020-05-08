@@ -1,5 +1,7 @@
 # tcx-utils
 
+Scale, strip, concatenate and modify TCX files.
+
 ## Environment setup
 
 ```bash

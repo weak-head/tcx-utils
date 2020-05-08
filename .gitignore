@@ -4,4 +4,8 @@ workouts/
 venv/
 
 bookmarks.json
+
 *.lock
+
+*.tcx
+*.txt
